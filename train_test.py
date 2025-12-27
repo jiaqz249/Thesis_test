@@ -9,6 +9,17 @@ from trajectory_datasets import TrajectoryDataset, trajectory_collate
 from base_models import LinearPredictor
 from losses import trajectory_loss
 
+# =========================
+# util
+# =========================
+def get_lambda_cls(epoch):
+    if epoch < 20:
+        return 0.0
+    elif epoch < 60:
+        return 0.4 * (epoch - 30) / 30
+    else:
+        return 0.4
+
 
 # =========================
 # metrics
@@ -41,7 +52,9 @@ def min_fde(pred, gt):
 @torch.no_grad()
 def evaluate(model, loader, device):
     model.eval()
-    ade_sum, fde_sum, cnt = 0.0, 0.0, 0
+    minade_sum, minfde_sum = 0.0, 0.0
+    top1ade_sum, top1fde_sum = 0.0, 0.0
+    cnt = 0
 
     for x, y, vel, pos, nei_lists, batch_splits in loader:
         x = x.to(device)
@@ -49,13 +62,56 @@ def evaluate(model, loader, device):
         vel = vel.to(device)
         pos = pos.to(device)
 
-        traj, _, _ = model(x, vel, pos, nei_lists, batch_splits)
+        traj, mode_logits, mode_prob = model(
+            x, vel, pos, nei_lists, batch_splits
+        )
 
-        ade_sum += min_ade(traj, y).item()
-        fde_sum += min_fde(traj, y).item()
+        minade_sum += min_ade(traj, y).item()
+        minfde_sum += min_fde(traj, y).item()
+
+        top1ade_sum += top1_ade(traj, y, mode_prob).item()
+        top1fde_sum += top1_fde(traj, y, mode_prob).item()
+
         cnt += 1
 
-    return ade_sum / cnt, fde_sum / cnt
+    return (
+        minade_sum / cnt,
+        minfde_sum / cnt,
+        top1ade_sum / cnt,
+        top1fde_sum / cnt,
+    )
+
+
+def top1_ade(pred, gt, mode_prob):
+    """
+    pred: (K, B, T, 2)
+    gt:   (B, T, 2)
+    mode_prob: (B, K)
+    """
+    B = gt.shape[0]
+    top1_idx = mode_prob.argmax(dim=1)  # (B,)
+
+    pred_top1 = pred[
+        top1_idx,
+        torch.arange(B, device=gt.device)
+    ]  # (B, T, 2)
+
+    l2 = torch.norm(pred_top1 - gt, dim=-1)  # (B, T)
+    return l2.mean(dim=1).mean()
+
+
+def top1_fde(pred, gt, mode_prob):
+    B = gt.shape[0]
+    top1_idx = mode_prob.argmax(dim=1)
+
+    pred_top1 = pred[
+        top1_idx,
+        torch.arange(B, device=gt.device)
+    ]
+
+    return torch.norm(
+        pred_top1[:, -1] - gt[:, -1], dim=-1
+    ).mean()
 
 
 # =========================
@@ -109,14 +165,9 @@ def main(args):
 
             pred, mode_logits, _ = model(x, vel, pos, nei_lists, batch_splits)
 
-            # if epoch < 10:
-            #     lambda_cls, lambda_div, lambda_ent= 1.0, 0.0, 0.0
-            # elif epoch < 30:
-            #     lambda_cls, lambda_div, lambda_ent= 1.0, 0.0, 0.0
-            # else:
-            #     lambda_cls, lambda_div, lambda_ent= 1.0, 0.0, 0.0
-
-            lambda_cls, lambda_div, lambda_ent= 1.0, 0.0, 0.0
+            lambda_cls = get_lambda_cls(epoch)
+            lambda_div = 0.0
+            lambda_ent = 0.0
             
             loss = trajectory_loss(
                 pred, y, mode_logits,
@@ -132,11 +183,15 @@ def main(args):
             total_loss += loss.item()
 
         # ===== validation =====
-        val_ade, val_fde = evaluate(model, val_loader, device)
+        val_minade, val_minfde, val_top1ade, val_top1fde = evaluate(
+            model, val_loader, device
+        )
 
-        # ===== save best =====
-        if val_ade < best_val_ade:
-            best_val_ade = val_ade
+        score = val_minade + 0.3 * val_top1ade
+
+
+        if epoch > 20 and score < best_val_ade:
+            best_val_ade = score
             torch.save(
                 model.state_dict(),
                 os.path.join(args.ckpt_dir, "model_best_hotel_6.pth")
@@ -145,7 +200,8 @@ def main(args):
         print(
             f"[Epoch {epoch:03d}] "
             f"train_loss={total_loss / len(train_loader):.4f} | "
-            f"val_minADE={val_ade:.4f} val_minFDE={val_fde:.4f}"
+            f"minADE={val_minade:.4f} "
+            f"top1ADE={val_top1ade:.4f}"
         )
 
 
@@ -163,7 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--pred_length", type=int, default=12)
     parser.add_argument("--attention_radius", type=float, default=3.0)
 
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=90)
     parser.add_argument("--lr", type=float, default=1e-4)
 

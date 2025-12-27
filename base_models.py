@@ -111,7 +111,7 @@ class LinearPredictor(nn.Module):
         self.gca_dropin_stack_layer = MultiLayerGCABlock(edge_feat_dim=3,
                                             node_feat_dim=self.social_ctx_dim,
                                             num_heads=4,
-                                            num_layers=3,
+                                            num_layers=1,
         )
         self.temporal_fusion_pos = GatedFusion(args, hidden_size=self.embedding_size)
         self.temporal_fusion_vel = GatedFusion(args, hidden_size=self.embedding_size)
@@ -163,28 +163,37 @@ class LinearPredictor(nn.Module):
         return nei_emb  # (B, S)
 
 
-    def forward(self, x: th.Tensor, vel, pos, nei_lists, batch_splits) -> th.Tensor:
+    def forward(self, x: th.Tensor, vel, pos, nei_lists, batch_splits):
 
         # encoder
-        # x: (B, H, 4)
-        x_emb = self.patch_embedding(x)  # (B, H - 2, E)
-        nei_emb = self.inverted_embedding(x)    # (B, S) S: social_ctx_dim
-        social_ctx = self._get_social_context(vel, pos, nei_emb, nei_lists, batch_splits)  # (B, S)
+        x_emb = self.patch_embedding(x)                 # (B, H - 2, E)
+        nei_emb = self.inverted_embedding(x)            # (B, S)
+        social_ctx = self._get_social_context(
+            vel, pos, nei_emb, nei_lists, batch_splits
+        )                                                # (B, S)
 
-        x_emb = self.positional_encoding(x_emb.permute(1, 0, 2)).permute(1, 0, 2)
+        x_emb = self.positional_encoding(
+            x_emb.permute(1, 0, 2)
+        ).permute(1, 0, 2)
+
         enc_out = self.transformer_encoder(x_emb)
-        enc_out, _ = self.gru(enc_out)  # (B, H - 2, E) E: embedding size
+        enc_out, _ = self.gru(enc_out)
         enc_out = self.enc_out_norm(enc_out)
-        
+
+        # >>> 新增：last observed position
+        last_obs_pos = pos                   # (B, 2)
 
         # decoder
-        traj, mode_logits = self.decoder(enc_out=enc_out, social_ctx=social_ctx)
+        traj, mode_logits = self.decoder(
+            enc_out=enc_out,
+            social_ctx=social_ctx,
+            last_obs_pos=last_obs_pos
+        )
 
         # traj: (B, K, T, 2) → (K, B, T, 2)
         traj = traj.transpose(0, 1)
 
-        # mode_prob
-        mode_prob = F.softmax(mode_logits, dim=-1)  # (B, K)
+        mode_prob = F.softmax(mode_logits, dim=-1)
 
         return traj, mode_logits, mode_prob
 

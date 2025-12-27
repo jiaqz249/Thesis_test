@@ -77,13 +77,6 @@ class CrossAttentionBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    """
-    QCNet-style decoder (minimal invasive version):
-
-    - proposal trajectory is built iteratively
-    - refinement is single-shot
-    """
-
     def __init__(
         self,
         enc_dim: int,
@@ -119,7 +112,7 @@ class Decoder(nn.Module):
             th.randn(1, num_modes, hidden_dim)
         )
 
-        # ---------- recursive proposal layers ----------
+        # ---------- cross-attn layers ----------
         self.layers = nn.ModuleList([
             CrossAttentionBlock(
                 dim=hidden_dim,
@@ -129,20 +122,17 @@ class Decoder(nn.Module):
             for _ in range(num_layers)
         ])
 
-        # ---------- proposal delta head ----------
-        self.proposal_head = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+        # ---------- endpoint head ----------
+        self.endpoint_head = nn.Linear(hidden_dim, 2)
+
+        # ---------- residual head ----------
+        self.residual_head = nn.Sequential(
+            nn.Linear(hidden_dim + 2, hidden_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, pred_len * 2),
+            nn.Linear(hidden_dim, 2),
         )
 
-        # ---------- trajectory embedding ----------
-        self.traj_embed = nn.Sequential(
-            nn.Linear(pred_len * 2, hidden_dim),
-            nn.ReLU(inplace=True),
-        )
-
-        # ---------- refinement (single-shot) ----------
+        # ---------- refinement ----------
         self.refine_block = CrossAttentionBlock(
             dim=hidden_dim,
             num_heads=num_heads,
@@ -152,21 +142,17 @@ class Decoder(nn.Module):
         # ---------- probability ----------
         self.prob_head = nn.Linear(hidden_dim, 1)
 
-        # ---------- final output ----------
-        self.out_head = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, pred_len * 2),
-        )
-        self.delta_dropout = nn.Dropout(p=0.1)
-        self.delta_scale = 0.5
-
     def forward(
         self,
         enc_out: th.Tensor,
         social_ctx: th.Tensor,
+        last_obs_pos: th.Tensor = None,  # (B, 2)
     ):
         """
+        Args:
+            enc_out: (B, H, enc_dim)
+            social_ctx: (B, social_dim)
+            last_obs_pos: (B, 2)
         Returns:
             traj_final: (B, K, T, 2)
             mode_logits: (B, K)
@@ -175,50 +161,45 @@ class Decoder(nn.Module):
         B = enc_out.size(0)
         device = enc_out.device
 
-        # ---------- build memory ----------
-        enc_mem = self.enc_proj(enc_out)                    # (B, H-2, D)
-        soc_mem = self.social_proj(social_ctx).unsqueeze(1) # (B, 1, D)
-        memory = th.cat([enc_mem, soc_mem], dim=1)          # (B, H-1, D)
+        # ---------- memory ----------
+        enc_mem = self.enc_proj(enc_out)              # (B, H, D)
+        soc_mem = self.social_proj(social_ctx).unsqueeze(1)  # (B, 1, D)
+        memory = th.cat([enc_mem, soc_mem], dim=1)   # (B, H+1, D)
 
         # ---------- init queries ----------
-        q = self.query_embed.expand(B, -1, -1)              # (B, K, D)
+        mode_latent = th.randn(B, self.num_modes, self.hidden_dim, device=device)
+        q = self.query_embed.expand(B, -1, -1) + mode_latent  # (B, K, D)
 
-        # ---------- init proposal trajectory ----------
-        traj_prop = th.zeros(
-            B, self.num_modes, self.pred_len, 2,
-            device=device
-        )
-
-        # ---------- iterative proposal decoding ----------
+        # ---------- cross-attention ----------
         for layer in self.layers:
-            # cross-attend memory
-            q = layer(q, memory)
+            q = layer(q, memory)  # (B, K, D)
 
-            # predict delta trajectory
-            delta = self.proposal_head(q)
-            delta = self.delta_dropout(delta)
-            delta = self.delta_scale * delta
-            delta = delta.view(
-                B, self.num_modes, self.pred_len, 2
-            )
+        # ---------- endpoint prediction ----------
+        endpoint = self.endpoint_head(q)  # (B, K, 2)
 
-            # update proposal
-            traj_prop = traj_prop + delta
+        # ---------- baseline trajectory ----------
+        if last_obs_pos is None:
+            start = th.zeros(B, 1, 2, device=device)  # (B, 1, 2)
+        else:
+            start = last_obs_pos.unsqueeze(1)        # (B, 1, 2)
 
-            # re-embed trajectory for next step
-            q = self.traj_embed(
-                traj_prop.view(B, self.num_modes, -1)
-            )
+        # 线性插值生成粗轨迹
+        t = th.linspace(1, self.pred_len, self.pred_len, device=device).view(1, 1, -1, 1) / self.pred_len
+        baseline = start[:, :, None, :] + t * (endpoint[:, :, None, :] - start[:, :, None, :])
+        # baseline shape: (B, K, T, 2)
 
-        # ---------- single-shot refinement ----------
-        q_ref = self.refine_block(q, memory)
+        # ---------- residual ----------
+        # 扩展 q 和 endpoint 到每个时间步
+        q_expand = q.unsqueeze(2).expand(-1, -1, self.pred_len, -1)          # (B, K, T, D)
+        endpoint_expand = endpoint.unsqueeze(2).expand(-1, -1, self.pred_len, -1)  # (B, K, T, 2)
 
-        mode_logits = self.prob_head(q_ref).squeeze(-1)
+        residual = self.residual_head(th.cat([q_expand, endpoint_expand], dim=-1))  # (B, K, T, 2)
+        traj = baseline + residual  # (B, K, T, 2)
 
-        traj_final = self.out_head(q_ref)
-        traj_final = traj_final.view(
-            B, self.num_modes, self.pred_len, 2
-        )
+        # ---------- refinement ----------
+        q_ref = self.refine_block(q, memory)  # (B, K, D)
+        mode_logits = self.prob_head(q_ref).squeeze(-1)  # (B, K)
 
-        return traj_final, mode_logits
+        return traj, mode_logits
+
 
