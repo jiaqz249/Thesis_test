@@ -4,7 +4,8 @@ from torch.utils.data import DataLoader
 from types import SimpleNamespace
 
 from trajectory_datasets import TrajectoryDataset, trajectory_collate
-from base_models import LinearPredictor
+# from base_models import LinearPredictor
+from base_models_test import LinearPredictor
 from metrics_min import min_ade, min_fde
 
 
@@ -48,7 +49,7 @@ def main():
 
     loader = DataLoader(
         dataset,
-        batch_size=32,
+        batch_size=64,
         shuffle=False,
         collate_fn=trajectory_collate
     )

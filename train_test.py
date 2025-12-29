@@ -6,7 +6,8 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from trajectory_datasets import TrajectoryDataset, trajectory_collate
-from base_models import LinearPredictor
+# from base_models import LinearPredictor
+from base_models_test import LinearPredictor
 from losses import trajectory_loss
 
 # =========================
