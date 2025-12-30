@@ -221,7 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--attention_radius", type=float, default=3.0)
 
     parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--epochs", type=int, default=90)
+    parser.add_argument("--epochs", type=int, default=120)
     parser.add_argument("--lr", type=float, default=1e-4)
 
     # model args
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_size", type=int, default=2)
     parser.add_argument("--x_encoder_head", type=int, default=4)
     parser.add_argument("--embedding_size", type=int, default=128)
-    parser.add_argument("--social_ctx_dim", type=int, default=128)
+    parser.add_argument("--social_ctx_dim", type=int, default=64)
     parser.add_argument("--num_samples", type=int, default=20)
 
     args = parser.parse_args()

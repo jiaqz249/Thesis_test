@@ -118,7 +118,7 @@ class LinearPredictor(nn.Module):
         self.temporal_fusion_all = GatedFusion(args, hidden_size=self.embedding_size)
         self.decoder = Decoder(enc_dim=self.embedding_size,
                                social_dim=self.social_ctx_dim,
-                               hidden_dim=256,
+                               hidden_dim=128,
                                num_modes=self.num_samples,
                                pred_len=self.output_len,
                                num_layers=4,
