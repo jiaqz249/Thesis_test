@@ -66,7 +66,7 @@ def main():
     )
 
     model = LinearPredictor(args, device).to(device)
-    model.load_state_dict(torch.load("checkpoints/model_best_hotel_6.pth"))
+    model.load_state_dict(torch.load("checkpoints/hotel_best_on_test.pth"))
 
     ade, fde = evaluate(model, loader, device)
 

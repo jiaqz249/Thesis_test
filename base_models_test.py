@@ -64,12 +64,12 @@ class LinearPredictor(nn.Module):
         # ===== Patch embedding (velocity only) =====
         self.patch_mlp_vx = nn.Sequential(
             nn.Linear(3, self.embedding_size),
-            nn.LayerNorm(self.embedding_size),
+            # nn.LayerNorm(self.embedding_size),
             nn.ReLU(inplace=True),
         )
         self.patch_mlp_vy = nn.Sequential(
             nn.Linear(3, self.embedding_size),
-            nn.LayerNorm(self.embedding_size),
+            # nn.LayerNorm(self.embedding_size),
             nn.ReLU(inplace=True),
         )
         self.temporal_fusion_vel = GatedFusion(args, hidden_size=self.embedding_size)
@@ -106,7 +106,7 @@ class LinearPredictor(nn.Module):
         # ===== Social encoding =====
         self.inverted_mlp = nn.Sequential(
             nn.Linear(self.input_len, self.social_ctx_dim),
-            nn.LayerNorm(self.social_ctx_dim),
+            # nn.LayerNorm(self.social_ctx_dim),
             nn.ReLU(inplace=True),
         )
         self.social_channel_fusion = GatedFusion(args, hidden_size=self.social_ctx_dim)
@@ -158,7 +158,7 @@ class LinearPredictor(nn.Module):
         x_emb = self.positional_encoding(x_emb)
         enc_out = self.transformer_encoder(x_emb)
         enc_out, _ = self.gru(enc_out)
-        enc_out = self.enc_out_norm(enc_out)
+        # enc_out = self.enc_out_norm(enc_out)
 
         # ===== Position conditioning (per timestep) =====
         pos_emb = self.pos_emb(pos).unsqueeze(1).repeat(1, enc_out.size(1), 1)
