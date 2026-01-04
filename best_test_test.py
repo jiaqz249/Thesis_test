@@ -162,7 +162,7 @@ def main(args):
             best_test_ade = score
             torch.save(
                 model.state_dict(),
-                os.path.join(args.ckpt_dir, "eth_best_on_test.pth"),
+                os.path.join(args.ckpt_dir, "zara1_best_on_test.pth"),
             )
 
         print(
@@ -182,12 +182,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_pkl",
         type=str,
-        default="processed_data_noise/eth_train.pkl",
+        default="processed_data_noise/zara1_train.pkl",
     )
     parser.add_argument(
         "--test_pkl",
         type=str,
-        default="processed_data_noise/eth_test.pkl",
+        default="processed_data_noise/zara1_test.pkl",
     )
     parser.add_argument(
         "--ckpt_dir",
