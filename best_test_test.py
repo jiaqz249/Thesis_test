@@ -162,7 +162,7 @@ def main(args):
             best_test_ade = score
             torch.save(
                 model.state_dict(),
-                os.path.join(args.ckpt_dir, "hotel_best_on_test.pth"),
+                os.path.join(args.ckpt_dir, "sdd_best_on_test.pth"),
             )
 
         print(
@@ -182,12 +182,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--train_pkl",
         type=str,
-        default="processed_data_noise/hotel_train.pkl",
+        default="processed_data_noise/sdd_train.pkl",
     )
     parser.add_argument(
         "--test_pkl",
         type=str,
-        default="processed_data_noise/hotel_test.pkl",
+        default="processed_data_noise/sdd_test.pkl",
     )
     parser.add_argument(
         "--ckpt_dir",
@@ -208,7 +208,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_size", type=int, default=2)
     parser.add_argument("--x_encoder_head", type=int, default=4)
     parser.add_argument("--embedding_size", type=int, default=128)
-    parser.add_argument("--social_ctx_dim", type=int, default=64)
+    parser.add_argument("--social_ctx_dim", type=int, default=128)
     parser.add_argument("--num_samples", type=int, default=20)
 
     args = parser.parse_args()

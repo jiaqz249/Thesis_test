@@ -61,12 +61,12 @@ def main():
         pred_length=12,     
         x_encoder_head=4,      # Transformer encoder 用
         embedding_size=128,
-        social_ctx_dim=64,
+        social_ctx_dim=128,
         num_samples=20,
     )
 
     model = LinearPredictor(args, device).to(device)
-    model.load_state_dict(torch.load("checkpoints/hotel_best_on_test.pth"))
+    model.load_state_dict(torch.load("checkpoints/sdd_best_on_test.pth"))
 
     ade, fde = evaluate(model, loader, device)
 
