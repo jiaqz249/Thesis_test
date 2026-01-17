@@ -60,8 +60,8 @@ def main():
         obs_length=8,
         pred_length=12,     
         x_encoder_head=4,      # Transformer encoder 用
-        embedding_size=128,
-        social_ctx_dim=128,
+        embedding_size=64,
+        social_ctx_dim=64,
         num_samples=20,
     )
 
