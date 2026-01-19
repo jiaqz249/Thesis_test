@@ -114,7 +114,7 @@ class LinearPredictor(nn.Module):
             edge_feat_dim=3,
             node_feat_dim=self.social_ctx_dim,
             num_heads=4,
-            num_layers=4,
+            num_layers=15,
         )
 
         # ===== Decoder =====
